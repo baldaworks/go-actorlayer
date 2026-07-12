@@ -154,12 +154,15 @@ func TestTransportRunReturnsHandlerError(t *testing.T) {
 
 func envelopeForTest(id string) actorlayer.Envelope {
 	return actorlayer.Envelope{
-		ID:          id,
-		Namespace:   "test.command",
-		Kind:        "message",
-		From:        actorlayer.SystemAddress("test"),
-		To:          actorlayer.ActorAddress{Target: "session", Key: "one"},
-		PayloadJSON: `{"ok":true}`,
+		ID:        id,
+		Namespace: "test.command",
+		Kind:      "message",
+		From:      actorlayer.SystemAddress("test"),
+		To:        actorlayer.ActorAddress{Target: "session", Key: "one"},
+		Payload: actorlayer.Payload{
+			Encoding: actorlayer.EncodingJSON,
+			Data:     []byte(`{"ok":true}`),
+		},
 		MaxAttempts: 3,
 	}
 }

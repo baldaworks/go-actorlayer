@@ -10,48 +10,59 @@ import (
 	"github.com/baldaworks/go-actorlayer/engine"
 )
 
-type exampleActor struct{}
+type welcomePayload struct {
+	Name string `json:"name"`
+}
 
-func (exampleActor) Address() string { return actorlayer.WildcardAddress("session") }
+type welcomeActor struct{}
 
-func (exampleActor) Handle(_ context.Context, env actorlayer.Envelope) error {
-	fmt.Println(env.To.Key)
+func (welcomeActor) Address() string { return actorlayer.WildcardAddress("session") }
+
+func (welcomeActor) Handle(_ context.Context, env actorlayer.Envelope) error {
+	var payload welcomePayload
+	if err := actorlayer.UnmarshalPayload(env.Payload, &payload); err != nil {
+		return err
+	}
+	fmt.Printf("welcome %s\n", payload.Name)
 	return nil
 }
 
-type exampleDelivery struct {
+type inMemoryDelivery struct {
 	env actorlayer.Envelope
 }
 
-func (d exampleDelivery) Envelope() engine.Envelope { return d.env }
-func (exampleDelivery) Attempt() int                { return 1 }
-func (exampleDelivery) MaxAttempts() int            { return 1 }
-func (exampleDelivery) InProgress(context.Context) error {
+func (d inMemoryDelivery) Envelope() engine.Envelope { return d.env }
+func (inMemoryDelivery) Attempt() int                { return 1 }
+func (inMemoryDelivery) MaxAttempts() int            { return 1 }
+func (inMemoryDelivery) InProgress(context.Context) error {
 	return nil
 }
-func (exampleDelivery) Ack(context.Context) error { return nil }
-func (exampleDelivery) Retry(context.Context, time.Duration, string) error {
+func (inMemoryDelivery) Ack(context.Context) error { return nil }
+func (inMemoryDelivery) Retry(context.Context, time.Duration, string) error {
 	return nil
 }
-func (exampleDelivery) DeadLetter(context.Context, string) error { return nil }
+func (inMemoryDelivery) DeadLetter(context.Context, string) error { return nil }
 
 func ExampleDispatchRuntime_Handle() {
 	registry := dispatch.NewMemoryRegistry()
-	_ = registry.Register(exampleActor{})
+	_ = registry.Register(welcomeActor{})
 	runtime, _ := engine.NewDispatchRuntime(engine.RuntimeConfig{
 		Registry:  registry,
 		AddressOf: func(env engine.Envelope) (string, error) { return env.To.String() },
 		Retry: engine.RetryPolicy{
 			IsRetryable: actorlayer.IsRetryableError,
+			Backoff:     actorlayer.RetryDelay,
 		},
 	})
-	_ = runtime.Handle(context.Background(), exampleDelivery{env: actorlayer.Envelope{
-		ID:          "env-1",
-		Namespace:   "example.command",
-		Kind:        "message",
-		From:        actorlayer.SystemAddress("example"),
-		To:          actorlayer.ActorAddress{Target: "session", Key: "one"},
-		PayloadJSON: `{"ok":true}`,
+
+	payload, _ := actorlayer.MarshalPayload(welcomePayload{Name: "ada"})
+	_ = runtime.Handle(context.Background(), inMemoryDelivery{env: actorlayer.Envelope{
+		ID:        "env-1",
+		Namespace: "example.command",
+		Kind:      "welcome",
+		From:      actorlayer.SystemAddress("example"),
+		To:        actorlayer.ActorAddress{Target: "session", Key: "demo"},
+		Payload:   payload,
 	}})
-	// Output: one
+	// Output: welcome ada
 }

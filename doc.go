@@ -1,24 +1,18 @@
-// Package actorlayer contains reusable actor runtime primitives.
+// Package actorlayer provides the core types for a small transport-agnostic
+// actor runtime.
 //
-// The package is intentionally transport-agnostic and independent of Balda
-// product packages so it can serve as the library boundary for generic actor
-// envelopes, errors, retry helpers, and runtime contracts.
+// The package defines the durable Envelope model, actor addresses, payload
+// helpers, error classification, and retry helpers used by the higher-level
+// dispatch, engine, and transport packages.
 //
-// Actorlayer is organized as a small set of composable packages:
-//   - actorlayer defines the wire-safe Envelope model, actor addresses,
-//     payload helpers, and error classification.
-//   - dispatch registers typed actors and resolves exact or wildcard actor
-//     addresses.
-//   - engine executes transport deliveries, serializes work by lane, applies
-//     retry policy, and settles deliveries through transport-owned hooks.
-//   - transport defines dispatcher, event publisher, event consumer, and
-//     drain contracts for broker or queue adapters.
-//   - transport/memory provides an in-memory implementation for tests,
-//     examples, and lightweight standalone use.
+// Package layout:
+//   - actorlayer: envelope model, addresses, payload helpers, errors, retry
+//   - dispatch: actor registration and address resolution
+//   - engine: delivery execution, lane serialization, settlement hooks
+//   - transport: dispatch, event, and drain contracts
+//   - transport/memory: in-memory transport for tests, examples, and local use
 //
-// Actor addresses are normalized as case-insensitive full address strings in
-// registry and engine dispatch paths. PayloadJSON carries an encoded JSON
-// payload string; MarshalPayload and UnmarshalPayload provide the standard
-// helpers for that field. ReportTo is optional, but when present it must be a
-// valid actor address.
+// Payload carries an explicit encoding plus raw bytes. Use MarshalPayload and
+// UnmarshalPayload to encode and decode typed payloads. ReportTo is optional,
+// but when present it must be a valid actor address.
 package actorlayer

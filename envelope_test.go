@@ -1,6 +1,7 @@
 package actorlayer_test
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -8,17 +9,57 @@ import (
 	"github.com/baldaworks/go-actorlayer"
 )
 
+type wrapperCodec struct{}
+
+func (wrapperCodec) Encoding() string {
+	return "wrapped-json"
+}
+
+func (wrapperCodec) Marshal(v any) ([]byte, error) {
+	raw, err := actorlayer.JSONCodec.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(`{"wrapped":` + string(raw) + `}`), nil
+}
+
+func (wrapperCodec) Unmarshal(data []byte, v any) error {
+	var wrapped struct {
+		Wrapped json.RawMessage `json:"wrapped"`
+	}
+	if err := actorlayer.JSONCodec.Unmarshal(data, &wrapped); err != nil {
+		return err
+	}
+	return actorlayer.JSONCodec.Unmarshal(wrapped.Wrapped, v)
+}
+
+func (wrapperCodec) Validate(data []byte) error {
+	var wrapped struct {
+		Wrapped json.RawMessage `json:"wrapped"`
+	}
+	if err := actorlayer.JSONCodec.Unmarshal(data, &wrapped); err != nil {
+		return err
+	}
+	if len(wrapped.Wrapped) == 0 {
+		return errors.New("wrapped payload is required")
+	}
+	return nil
+}
+
 func TestEnvelopeRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	env := actorlayer.Envelope{
-		ID:          "env-1",
-		Namespace:   "test.command",
-		Kind:        "message",
-		From:        actorlayer.ActorAddress{Target: "system", Key: "source"},
-		To:          actorlayer.ActorAddress{Target: "session", Key: "1"},
-		DedupeKey:   "dedupe-1",
-		PayloadJSON: `{"ok":true}`,
+		ID:        "env-1",
+		Namespace: "test.command",
+		Kind:      "message",
+		From:      actorlayer.ActorAddress{Target: "system", Key: "source"},
+		To:        actorlayer.ActorAddress{Target: "session", Key: "1"},
+		DedupeKey: "dedupe-1",
+		Payload: actorlayer.Payload{
+			Encoding: actorlayer.EncodingJSON,
+			Data:     []byte(`{"ok":true}`),
+		},
 	}
 
 	raw, err := actorlayer.EncodeEnvelope(env)
@@ -29,7 +70,7 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeEnvelope() error = %v", err)
 	}
-	if got.ID != env.ID || got.Namespace != env.Namespace || got.Kind != env.Kind || got.From != env.From || got.To != env.To || got.DedupeKey != env.DedupeKey || got.PayloadJSON != env.PayloadJSON {
+	if got.ID != env.ID || got.Namespace != env.Namespace || got.Kind != env.Kind || got.From != env.From || got.To != env.To || got.DedupeKey != env.DedupeKey || got.Payload.Encoding != env.Payload.Encoding || string(got.Payload.Data) != string(env.Payload.Data) {
 		t.Fatalf("DecodeEnvelope(EncodeEnvelope()) = %#v, want %#v", got, env)
 	}
 	if key := actorlayer.DedupeKeyOrID(got); key != env.DedupeKey {
@@ -66,13 +107,23 @@ func TestDecodeEnvelopeClassifiesInvalidEnvelopeAsDecodeError(t *testing.T) {
 	}
 }
 
-func TestEnvelopeValidateRejectsInvalidPayloadJSON(t *testing.T) {
+func TestEnvelopeValidateRejectsInvalidJSONPayload(t *testing.T) {
 	t.Parallel()
 
 	env := validEnvelopeForTest()
-	env.PayloadJSON = `{not-json`
-	if err := env.Validate(); err == nil || !strings.Contains(err.Error(), "payload_json must be valid json") {
-		t.Fatalf("Validate() error = %v, want invalid payload_json error", err)
+	env.Payload = actorlayer.Payload{Encoding: actorlayer.EncodingJSON, Data: []byte(`{not-json`)}
+	if err := env.Validate(); err == nil || !strings.Contains(err.Error(), "payload json: payload must be valid json") {
+		t.Fatalf("Validate() error = %v, want invalid json payload error", err)
+	}
+}
+
+func TestEnvelopeValidateRejectsMissingEncoding(t *testing.T) {
+	t.Parallel()
+
+	env := validEnvelopeForTest()
+	env.Payload = actorlayer.Payload{Data: []byte(`{"ok":true}`)}
+	if err := env.Validate(); err == nil || !strings.Contains(err.Error(), "payload encoding is required") {
+		t.Fatalf("Validate() error = %v, want missing encoding error", err)
 	}
 }
 
@@ -104,13 +155,13 @@ func TestEncodeEnvelopeRejectsInvalidEnvelope(t *testing.T) {
 			want: "envelope id is required",
 		},
 		{
-			name: "invalid payload json",
+			name: "invalid payload",
 			env: func() actorlayer.Envelope {
 				env := validEnvelopeForTest()
-				env.PayloadJSON = "{not-json"
+				env.Payload = actorlayer.Payload{Encoding: actorlayer.EncodingJSON, Data: []byte("{not-json")}
 				return env
 			}(),
-			want: "payload_json must be valid json",
+			want: "payload must be valid json",
 		},
 		{
 			name: "invalid report to",
@@ -151,7 +202,7 @@ func TestPayloadHelpers(t *testing.T) {
 	if got != (payload{OK: true, Name: "test"}) {
 		t.Fatalf("UnmarshalPayload() = %#v, want ok/test", got)
 	}
-	if err := actorlayer.UnmarshalPayload(`{"ok":`, &got); err == nil || actorlayer.ClassifyError(err) != actorlayer.ErrorKindDecode {
+	if err := actorlayer.UnmarshalPayload(actorlayer.Payload{Encoding: actorlayer.EncodingJSON, Data: []byte(`{"ok":`)}, &got); err == nil || actorlayer.ClassifyError(err) != actorlayer.ErrorKindDecode {
 		t.Fatalf("UnmarshalPayload(invalid) error = %v, want decode error", err)
 	}
 	if err := actorlayer.UnmarshalPayload(raw, nil); err == nil || actorlayer.ClassifyError(err) != actorlayer.ErrorKindDecode {
@@ -159,13 +210,52 @@ func TestPayloadHelpers(t *testing.T) {
 	}
 }
 
+func TestPayloadHelpersWithCodec(t *testing.T) {
+	t.Parallel()
+
+	type payload struct {
+		Value string `json:"value"`
+	}
+
+	reg := actorlayer.NewCodecRegistry(actorlayer.JSONCodec, wrapperCodec{})
+	raw, err := actorlayer.MarshalPayloadWithCodec(wrapperCodec{}, payload{Value: "ok"})
+	if err != nil {
+		t.Fatalf("MarshalPayloadWithCodec() error = %v", err)
+	}
+	if raw.Encoding != "wrapped-json" || string(raw.Data) != `{"wrapped":{"value":"ok"}}` {
+		t.Fatalf("MarshalPayloadWithCodec() = %#v", raw)
+	}
+	var got payload
+	if err := actorlayer.UnmarshalPayloadWithRegistry(reg, raw, &got); err != nil {
+		t.Fatalf("UnmarshalPayloadWithRegistry() error = %v", err)
+	}
+	if got.Value != "ok" {
+		t.Fatalf("UnmarshalPayloadWithRegistry() = %#v", got)
+	}
+}
+
+func TestEnvelopeRoundTripLegacyJSONWire(t *testing.T) {
+	t.Parallel()
+
+	got, err := actorlayer.DecodeEnvelope(`{"id":"env-1","namespace":"test.command","kind":"message","from":{"target":"system","key":"source"},"to":{"target":"session","key":"1"},"payload_json":"{\"ok\":true}"}`)
+	if err != nil {
+		t.Fatalf("DecodeEnvelope(legacy) error = %v", err)
+	}
+	if got.Payload.Encoding != actorlayer.EncodingJSON || string(got.Payload.Data) != `{"ok":true}` {
+		t.Fatalf("legacy payload = %#v", got.Payload)
+	}
+}
+
 func validEnvelopeForTest() actorlayer.Envelope {
 	return actorlayer.Envelope{
-		ID:          "env-1",
-		Namespace:   "test.command",
-		Kind:        "message",
-		From:        actorlayer.ActorAddress{Target: "system", Key: "source"},
-		To:          actorlayer.ActorAddress{Target: "session", Key: "1"},
-		PayloadJSON: `{"ok":true}`,
+		ID:        "env-1",
+		Namespace: "test.command",
+		Kind:      "message",
+		From:      actorlayer.ActorAddress{Target: "system", Key: "source"},
+		To:        actorlayer.ActorAddress{Target: "session", Key: "1"},
+		Payload: actorlayer.Payload{
+			Encoding: actorlayer.EncodingJSON,
+			Data:     []byte(`{"ok":true}`),
+		},
 	}
 }

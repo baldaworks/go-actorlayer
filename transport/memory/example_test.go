@@ -11,18 +11,26 @@ import (
 
 func ExampleTransport() {
 	bus := memory.New(1)
+	payload, _ := actorlayer.MarshalPayload(struct {
+		Name string `json:"name"`
+	}{Name: "ada"})
+
 	_, _ = bus.Dispatch(context.Background(), actorlayer.Envelope{
-		ID:          "env-1",
-		Namespace:   "example.command",
-		Kind:        "message",
-		From:        actorlayer.SystemAddress("example"),
-		To:          actorlayer.ActorAddress{Target: "session", Key: "one"},
-		PayloadJSON: `{"ok":true}`,
+		ID:        "env-1",
+		Namespace: "example.command",
+		Kind:      "welcome",
+		From:      actorlayer.SystemAddress("example"),
+		To:        actorlayer.ActorAddress{Target: "session", Key: "demo"},
+		Payload:   payload,
 	})
 	_ = bus.Run(context.Background(), func(ctx context.Context, delivery engine.Delivery) error {
-		fmt.Println(delivery.Envelope().ID)
+		var got struct {
+			Name string `json:"name"`
+		}
+		_ = actorlayer.UnmarshalPayload(delivery.Envelope().Payload, &got)
+		fmt.Printf("%s -> %s\n", delivery.Envelope().ID, got.Name)
 		_ = delivery.Ack(ctx)
 		return bus.Drain(ctx)
 	})
-	// Output: env-1
+	// Output: env-1 -> ada
 }

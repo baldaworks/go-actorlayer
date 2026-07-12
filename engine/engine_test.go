@@ -384,7 +384,7 @@ func TestRuntimeHandleRejectsInvalidEnvelopeBeforeExecution(t *testing.T) {
 	sink := &recordingSink{}
 	runtime := newRuntimeForTest(t, sink)
 	delivery := newDelivery("invalid-runtime", "lane")
-	delivery.env.PayloadJSON = "{not-json"
+	delivery.env.Payload = actorlayer.Payload{Encoding: actorlayer.EncodingJSON, Data: []byte("{not-json")}
 	called := false
 	err := runtime.Handle(context.Background(), delivery, func(context.Context, engine.Delivery) error {
 		called = true
@@ -493,7 +493,7 @@ func TestDispatchRuntimeRejectsInvalidEnvelopeBeforeActor(t *testing.T) {
 		t.Fatalf("NewDispatchRuntime() error = %v", err)
 	}
 	delivery := newDelivery("invalid-dispatch", "one")
-	delivery.env.PayloadJSON = "{not-json"
+	delivery.env.Payload = actorlayer.Payload{Encoding: actorlayer.EncodingJSON, Data: []byte("{not-json")}
 	err = runtime.Handle(context.Background(), delivery)
 	if err == nil {
 		t.Fatal("Handle() error = nil, want invalid envelope error")
@@ -541,12 +541,15 @@ func newRuntimeForTest(t *testing.T, sink engine.EventSink) *engine.Runtime {
 func newDelivery(id, lane string) *testDelivery {
 	return &testDelivery{
 		env: engine.Envelope{
-			ID:          id,
-			Namespace:   "test.command",
-			Kind:        "message",
-			From:        engine.ActorAddress{Target: "test", Key: "source"},
-			To:          engine.ActorAddress{Target: "session", Key: lane},
-			PayloadJSON: `{"ok":true}`,
+			ID:        id,
+			Namespace: "test.command",
+			Kind:      "message",
+			From:      engine.ActorAddress{Target: "test", Key: "source"},
+			To:        engine.ActorAddress{Target: "session", Key: lane},
+			Payload: actorlayer.Payload{
+				Encoding: actorlayer.EncodingJSON,
+				Data:     []byte(`{"ok":true}`),
+			},
 		},
 	}
 }
