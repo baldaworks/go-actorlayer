@@ -1,8 +1,6 @@
-// Package dispatch provides typed actor registration and address resolution
-// helpers.
+// Package dispatch provides actor registration and address resolution helpers.
 //
-// MemoryRegistry normalizes addresses by trimming whitespace and lowercasing
-// before registration or lookup. When an exact address is not registered,
-// lookups fall back to a target wildcard address such as "session:*". Actor
-// handlers receive already validated actorlayer envelopes.
+// MemoryRegistry stores process-local actors, normalizes addresses before
+// lookup, resolves exact matches first, and then falls back to target wildcard
+// addresses such as "session:*".
 package dispatch
