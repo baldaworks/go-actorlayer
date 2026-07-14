@@ -13,6 +13,7 @@
 //   - transport/memory: in-memory transport for tests, examples, and local use
 //
 // Payload carries an explicit encoding plus raw bytes. Use MarshalPayload and
-// UnmarshalPayload to encode and decode typed payloads. ReportTo is optional,
-// but when present it must be a valid actor address.
+// UnmarshalPayload to encode and decode typed payloads. The default helpers use
+// the built-in JSON codec unless a codec-aware helper is used explicitly.
+// ReportTo is optional, but when present it must be a valid actor address.
 package actorlayer

@@ -220,6 +220,11 @@ The built-in default is `JSONCodec`. On the wire, JSON payloads keep the legacy
 `payload_json` projection for compatibility, while non-JSON payloads use
 `payload_encoding` plus base64-encoded `payload_data`.
 
+Custom encodings are first-class in the codec-aware marshal, unmarshal, and
+envelope encode/decode paths above. The default helper path still uses the
+built-in registry, so raw payload construction through `NewPayload` only accepts
+encodings registered there.
+
 ## Addressing
 
 Addresses look like `target:key`.
